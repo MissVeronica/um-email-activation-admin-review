@@ -1,4 +1,4 @@
-# UM Email Activation Admin Review
+# UM Email Activation and Admin Review
 Extension to Ultimate Member for two steps of User Registration with both Email Activation and Admin Review before User is accepted.
 
 ## UM Settings -> General -> Users
