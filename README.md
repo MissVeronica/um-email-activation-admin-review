@@ -1,6 +1,6 @@
 # UM Email Activation and Admin Review
 Extension to Ultimate Member for two steps of User Registration with both Email Activation and Admin Review before User is accepted.
-## Installation
+## Settings
 ### UM Settings -> General -> Users
 * Admin Review User Role - This will be the role assigned to Users for Admin review after Email Activation.
 ### UM User Roles -> Edit the Registration Role -> "Registration Options"
