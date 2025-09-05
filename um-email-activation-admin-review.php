@@ -2,7 +2,7 @@
 /**
  * Plugin Name:     Ultimate Member - Email Activation and Admin Review
  * Description:     Extension to Ultimate Member for two steps of User Registration with both Email Activation and Admin Review before User is accepted.
- * Version:         1.0.0
+ * Version:         2.0.0
  * Requires PHP:    7.4
  * Author:          Miss Veronica
  * License:         GPL v2 or later
@@ -12,7 +12,7 @@
  * Update URI:      https://github.com/MissVeronica/um-email-activation-admin-review
  * Text Domain:     ultimate-member
  * Domain Path:     /languages
- * UM version:      2.9.0
+ * UM version:      2.10.5
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -32,7 +32,7 @@ class UM_Email_Activation_Admin_Review {
     public function plugin_settings_link( $links ) {
 
         $url = get_admin_url() . 'admin.php?page=um_options&section=users';
-        $links[] = '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Settings' ) . '</a>'; 
+        $links[] = '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Settings' ) . '</a>';
 
         return $links;
     }
@@ -41,39 +41,46 @@ class UM_Email_Activation_Admin_Review {
 
         um_fetch_user( $user_id );
 
-        $registration_role = sanitize_text_field( UM()->options()->get( 'eaar_email_activation_role' ));
         $admin_review_role = sanitize_text_field( UM()->options()->get( 'eaar_admin_review_role' ));
 
-        UM()->roles()->remove_role( $user_id, $registration_role );
-        UM()->roles()->set_role( $user_id, $admin_review_role );
+        if ( ! empty( $admin_review_role ) && $admin_review_role != um_user( 'role' ) ) {
 
-        UM()->user()->remove_cache( $user_id );
-        um_fetch_user( $user_id );
+            UM()->roles()->remove_role( $user_id, um_user( 'role' ) );
+            UM()->roles()->set_role( $user_id, $admin_review_role );
 
-        $user_role_data = UM()->roles()->role_data( um_user( 'role' ) );
+            UM()->user()->remove_cache( $user_id );
+            um_fetch_user( $user_id );
+        }
 
         UM()->common()->users()->set_as_pending( $user_id, true );
 
-        if ( isset( $user_role_data['pending_action'] )) {
-
-            if ( $user_role_data['pending_action'] == 'redirect_url' ) {
-
-                $redirect = $user_role_data['pending_url'];
-
-                exit( wp_safe_redirect( $redirect ));
+        $emails = um_multi_admin_email();
+        if ( ! empty( $emails ) ) {
+            foreach ( $emails as $email ) {
+                UM()->mail()->send( $email, 'notification_review', array( 'admin' => true ) );
             }
+        }
 
-            if ( $user_role_data['pending_action'] == 'show_message' ) {
+        $user_role_data = UM()->roles()->role_data( um_user( 'role' ) );
 
-                $forms = get_posts(array('post_type' => 'um_form', 'posts_per_page' => 1, 'meta_key' => '_um_core', 'meta_value' => 'register' ));
-                $form_id = isset( $forms[0]->ID ) ? $forms[0]->ID: 0;
+        if ( isset( $user_role_data['status'] )) {
+            $status = $user_role_data['status'];
 
-                $url = um_get_core_page( 'register' );
-                $url = add_query_arg( 'message', esc_attr( 'pending' ), $url . '?' );
-                $url = add_query_arg( 'um_role', esc_attr( um_user( 'role' ) ), $url );
-                $url = add_query_arg( 'um_form_id', esc_attr( $form_id ), $url );
+            if ( isset( $user_role_data[$status . '_action'] )) {
 
-                exit( wp_safe_redirect( $url ));
+                if ( $user_role_data[$status . '_action'] === 'redirect_url' ) {
+
+                    exit( wp_safe_redirect( $user_role_data[$status . '_url'] ));
+                }
+
+                if ( $user_role_data[$status . '_action'] === 'show_message' ) {
+
+                    $url = um_get_core_page( 'register' );
+                    $url = add_query_arg( 'message', esc_attr( $status ), $url . '?' );
+                    $url = add_query_arg( 'um_role', esc_attr( um_user( 'role' ) ), $url );
+
+                    exit( wp_safe_redirect( $url ));
+                }
             }
         }
     }
@@ -95,22 +102,11 @@ class UM_Email_Activation_Admin_Review {
                 $settings_structure['']['sections']['users']['form_sections']['email_confirmation_admin_approval'] =
                                                 array(
                                                         'title'       => esc_html__( 'Email Activation and Admin Review', 'ultimate-member' ),
-                                                        'description' => sprintf( esc_html__( 'Plugin version %s - tested with UM 2.9.0 - %s', 'ultimate-member' ),
+                                                        'description' => sprintf( esc_html__( 'Plugin version %s - tested with UM 2.10.5 - %s', 'ultimate-member' ),
                                                                                                         $plugin_data['Version'], $documention )
                                                     );
 
-                $settings = array();
-
-                $settings[] = array(
-                                    'id'          => 'eaar_email_activation_role',
-                                    'type'        => 'select',
-                                    'label'       => $prefix . esc_html__( 'Email Activation User Role', 'ultimate-member' ),
-                                    'description' => esc_html__( 'This will be the role assigned to Users registering through Ultimate Member registration forms and in the first step: Email Activation.', 'ultimate-member' ),
-                                    'options'     => UM()->roles()->get_roles(),
-                                    'size'        => 'small',
-                                );
-
-                $settings[] = array(
+                $settings_structure['']['sections']['users']['form_sections']['email_confirmation_admin_approval']['fields'][] = array(
                                     'id'          => 'eaar_admin_review_role',
                                     'type'        => 'select',
                                     'label'       => $prefix . esc_html__( 'Admin Review User Role', 'ultimate-member' ),
@@ -118,8 +114,6 @@ class UM_Email_Activation_Admin_Review {
                                     'options'     => UM()->roles()->get_roles(),
                                     'size'        => 'small',
                                 );
-
-                $settings_structure['']['sections']['users']['form_sections']['email_confirmation_admin_approval']['fields'] = $settings;
 
             }
         }
@@ -129,4 +123,3 @@ class UM_Email_Activation_Admin_Review {
 }
 
 new UM_Email_Activation_Admin_Review();
-
